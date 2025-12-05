@@ -25,6 +25,7 @@ class Config:
     VAL_EMB_PATH = os.path.join(INPUT_VAL_DIR, "val_embeddings_split.npy")
     Y_TRAIN_PATH = os.path.join(INPUT_TRAIN_DIR, "Y_train_sparse.npy")
     Y_VAL_PATH = os.path.join(INPUT_VAL_DIR, "Y_val_sparse.npy")
+    IA_WEIGHTS_PATH = os.path.join(INPUT_DIR, "ia_weights.npy")
     
    
     # Training Hyperparameters
@@ -228,18 +229,19 @@ def train_one_epoch(model: nn.Module, loader: DataLoader, criterion, optimizer, 
     epoch_loss = running_loss / len(loader.dataset)
     return epoch_loss
 
-def validate_epoch(model: nn.Module, loader: DataLoader, label_count: int) -> tuple:
-    """Performs validation and computes the best F1-score and threshold."""
+def validate_epoch(model: nn.Module, loader: DataLoader, label_count: int, ia_weights_np: np.ndarray) -> tuple:
+    """Performs validation and computes the best F1-score based on WEIGHTED Precision and Recall."""
     model.eval()
     
-    # Thresholds for validation F1 tuning (Fixed set for quick comparison)
-    thresholds = np.arange(0.30, 0.95, 0.05)
+    # Thresholds for validation F1 tuning
+    thresholds = np.arange(0.35, 0.95, 0.05)
     T = len(thresholds)
 
-    # Initialize per-threshold, per-label counters for metrics
-    TP = np.zeros((T, label_count), dtype=np.int64)
-    FP = np.zeros((T, label_count), dtype=np.int64)
-    FN = np.zeros((T, label_count), dtype=np.int64)
+    # Initialize per-threshold, per-label counters for True Positives, False Positives, False Negatives
+    TP = np.zeros((T, label_count), dtype=np.float64)
+    FP = np.zeros((T, label_count), dtype=np.float64)
+    FN = np.zeros((T, label_count), dtype=np.float64)
+    
     nan_detected = False
 
     with torch.no_grad():
@@ -263,32 +265,46 @@ def validate_epoch(model: nn.Module, loader: DataLoader, label_count: int) -> tu
             # Update metrics for each threshold
             for i, t in enumerate(thresholds):
                 preds = (probs >= t).astype(np.int8)
-                TP[i] += np.sum((preds == 1) & (targets == 1), axis=0)
-                FP[i] += np.sum((preds == 1) & (targets == 0), axis=0)
-                FN[i] += np.sum((preds == 0) & (targets == 1), axis=0)
+                
+                # Calculate True Positives, False Positives, False Negatives for the batch
+                TP_batch = (preds == 1) & (targets == 1)
+                FP_batch = (preds == 1) & (targets == 0)
+                FN_batch = (preds == 0) & (targets == 1)
+                
+                # Accumulate the weighted counts (multiply by IA weights)
+                TP[i] += np.sum(TP_batch * ia_weights_np, axis=0)
+                FP[i] += np.sum(FP_batch * ia_weights_np, axis=0)
+                FN[i] += np.sum(FN_batch * ia_weights_np, axis=0)
 
     if nan_detected:
-        # Return 0.0 scores if validation failed
-        return 0.5, 0.0 
+        raise RuntimeError("Validation aborted due to NaN/Inf in logits.")
 
-    # Compute macro F1 per threshold
-    f1_per_threshold = np.zeros(T)
+    # --- FINAL WEIGHTED F1 CALCULATION ---
+    weighted_f1_per_threshold = np.zeros(T)
+    
+    # Sum the weighted counts over all labels (axis=1) to get the global totals [T]
+    TP_sum = np.sum(TP, axis=1) 
+    FP_sum = np.sum(FP, axis=1)
+    FN_sum = np.sum(FN, axis=1)
+    
     for i in range(T):
-        tp = TP[i].astype(float)
-        fp = FP[i].astype(float)
-        fn = FN[i].astype(float)
+        tp, fp, fn = TP_sum[i], FP_sum[i], FN_sum[i]
         
-        denom = 2 * tp + fp + fn
+        # Weighted Precision (P_w) = TP_sum / (TP_sum + FP_sum)
+        P_w = tp / (tp + fp) if (tp + fp) > 0 else 0.0
         
-        with np.errstate(divide='ignore', invalid='ignore'):
-            f1_label = np.where(denom > 0, (2 * tp) / denom, 0.0)
+        # Weighted Recall (R_w) = TP_sum / (TP_sum + FN_sum)
+        R_w = tp / (tp + fn) if (tp + fn) > 0 else 0.0
         
-        f1_per_threshold[i] = np.mean(f1_label)
+        # Weighted F1 = 2*P*R / (P+R)
+        F1_w = (2 * P_w * R_w) / (P_w + R_w) if (P_w + R_w) > 0 else 0.0
+        
+        weighted_f1_per_threshold[i] = F1_w
 
     # Select best threshold and F1
-    best_idx = int(np.argmax(f1_per_threshold))
+    best_idx = int(np.argmax(weighted_f1_per_threshold))
     best_t = float(thresholds[best_idx])
-    best_f1_local = float(f1_per_threshold[best_idx])
+    best_f1_local = float(weighted_f1_per_threshold[best_idx])
     
     return best_t, best_f1_local
 
@@ -354,9 +370,11 @@ def run_training_experiment(lr: float, epoch_max: int,
         
         if Config.DEVICE.type == "cuda":
             torch.cuda.empty_cache()
+            
+        ia_weights_np = np.load(Config.IA_WEIGHTS_PATH)
 
         # Validate
-        best_t_local, best_f1_local = validate_epoch(model, val_loader, LABEL_COUNT)
+        best_t_local, best_f1_local = validate_epoch(model, val_loader, LABEL_COUNT, ia_weights_np)
 
         print(
             f"  Ep {epoch}/{epoch_max} | LR: {optimizer.param_groups[0]['lr']:.2e} | Train Loss: {epoch_loss:.5f} | "
