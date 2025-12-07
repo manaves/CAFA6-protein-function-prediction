@@ -211,3 +211,5 @@ input/
 output/
 runs/
 general_input/
+.vscode/
+.env
