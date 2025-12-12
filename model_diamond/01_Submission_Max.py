@@ -14,14 +14,12 @@ class Config:
     # Output File
     SUBMISSION_FILE = os.path.join(OUTPUT_DIR, "submission.tsv")
     
-    # Ensemble Weights (Must sum to 1.0) for when BOTH predict
-    WEIGHT_DL = 0.85
-    WEIGHT_DIAMOND = 0.15
+    # Note: Using max score between models instead of weighted average
 
 # --- MAIN FUNCTION ---
 
 def generate_ensemble():
-    print("--- Generating Submission Final (Ensemble with Conditional Logic) ---")
+    print("--- Generating Submission Final (Max Score between Models) ---")
     
     # 1. Load Deep Learning Predictions
     print(f"Loading Deep Learning model: {Config.PREDS_DL} ...")
@@ -52,28 +50,30 @@ def generate_ensemble():
     del df_dl, df_diamond
     gc.collect()
 
-    # 4. CONDITIONAL SCORING LOGIC
-    print("Calculating final scores...")
+    # 4. CONDITIONAL SCORING LOGIC (MAX SCORE)
+    print("Calculating final scores (using max between models)...")
 
     # We identify who predicted what using .notna() BEFORE filling NaNs
     has_dl = df_final['score_dl'].notna()
     has_diamond = df_final['score_diamond'].notna()
 
-    # We calculate the weighted average for the case where BOTH exist.
+    # Calculate the maximum score for the case where BOTH exist.
     # We use .fillna(0) inside the calculation just to avoid errors, 
     # but this value will only be used where (has_dl & has_diamond) is True.
-    weighted_avg = (df_final['score_dl'].fillna(0) * Config.WEIGHT_DL) + \
-                   (df_final['score_diamond'].fillna(0) * Config.WEIGHT_DIAMOND)
+    max_score = np.maximum(
+        df_final['score_dl'].fillna(0),
+        df_final['score_diamond'].fillna(0)
+    )
 
     # Define the conditions and choices
     conditions = [
-        has_dl & has_diamond,   # Case 1: Both models predicted -> Weighted Average
+        has_dl & has_diamond,   # Case 1: Both models predicted -> Max Score
         has_dl & ~has_diamond,  # Case 2: Only DL predicted -> Trust DL 100%
         ~has_dl & has_diamond   # Case 3: Only Diamond predicted -> Trust Diamond 100%
     ]
 
     choices = [
-        weighted_avg,               # Result for Case 1
+        max_score,                  # Result for Case 1: Maximum of both scores
         df_final['score_dl'],       # Result for Case 2
         df_final['score_diamond']   # Result for Case 3
     ]
