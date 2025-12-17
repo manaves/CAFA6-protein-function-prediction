@@ -5,17 +5,22 @@ import scipy.sparse as sp # Needed to handle sparse Y matrix
 from sklearn.model_selection import train_test_split
 
 # --- Configuration ---
-CLUSTER_DIR = "../../pre/clust_id25_c80_cov1_mode2_reass1_thr32"
+CLUSTER_DIR = "../../pre"
 CLUSTER_TSV_PATH = os.path.join(CLUSTER_DIR, "clust_id25_c80_cov1_mode2_reass1_thr32_cluster.tsv")
 RANDOM_SEED = 42
 VAL_CLUSTER_RATIO = 0.20 # Percentage of clusters to reserve for validation
 
 INPUT_PATH = "../input/"
 TRAIN_PATH = os.path.join(INPUT_PATH, "train/")
+VAL_PATH = os.path.join(INPUT_PATH, "val/")
 X_FULL_PATH = os.path.join(INPUT_PATH, "train_embeddings.npy")
-Y_FULL_SPARSE_PATH = os.path.join(TRAIN_PATH, "Y_train_sparse.npy")
-ALL_SEQUENCE_IDS_PATH = os.path.join(INPUT_PATH, "all_sequence_ids.npy")
+Y_FULL_SPARSE_PATH = os.path.join(TRAIN_PATH, "Y_sparse_all_train.npz")
+ALL_SEQUENCE_IDS_PATH = os.path.join(INPUT_PATH, "sequences_ids_all_train.npy")
 
+X_TRAIN_PATH = os.path.join(TRAIN_PATH, "train_embeddings_new_split.npy")
+X_VAL_PATH = os.path.join(VAL_PATH, "val_embeddings_new_split.npy")
+Y_TRAIN_PATH = os.path.join(TRAIN_PATH, "Y_train_sparse_new_split.npz")
+Y_VAL_PATH = os.path.join(VAL_PATH, "Y_val_sparse_new_split.npz")
 
 def create_homology_split(
     X_full: np.ndarray, 
@@ -83,13 +88,17 @@ def create_homology_split(
                  train_indices.append(i)
 
     print(f"Total samples assigned: Train={len(train_indices)}, Validation={len(val_indices)}")
+    print(f"First 10 train indices: {train_indices[:10]}")
+    print(f"First 10 val indices: {val_indices[:10]}")
     
     # --- 5. Rebuild Data Matrices ---
     # Use the indices to slice the full X (ESM-2 embeddings) and Y (labels)
+    print("Slicing the full data with the train and val indices...")
     X_train = X_full[train_indices, :]
     X_val = X_full[val_indices, :]
     
     # Y matrices (labels)
+    print("Slicing the Y matrix with the train and val indices...")
     Y_train = Y_full_sparse[train_indices, :]
     Y_val = Y_full_sparse[val_indices, :]
 
@@ -98,7 +107,7 @@ def create_homology_split(
 if __name__ == "__main__":
     # Load the full data
     X_full = np.load(X_FULL_PATH)
-    Y_full_sparse = np.load(Y_FULL_SPARSE_PATH)
+    Y_full_sparse = sp.load_npz(Y_FULL_SPARSE_PATH)
     all_sequence_ids = np.load(ALL_SEQUENCE_IDS_PATH)
 
     # Split the data
@@ -110,17 +119,8 @@ if __name__ == "__main__":
     )
 
     # Save the split data
+    print("Saving the split data...")
     np.save(X_TRAIN_PATH, X_train)
     np.save(X_VAL_PATH, X_val)
-    np.save(Y_TRAIN_PATH, Y_train)
-    np.save(Y_VAL_PATH, Y_val)
-
-# Example of how to call the function after loading your full data:
-# X_train_emb_new, X_val_emb_new, Y_train_sparse_new, Y_val_sparse_new = create_homology_split(
-#     X_full=X_full_combined,
-#     Y_full_sparse=Y_full_combined,
-#     all_sequence_ids=ALL_SEQUENCE_IDS, # Make sure this list is loaded!
-#     cluster_tsv_path=CLUSTER_TSV_PATH
-# )
-#
-# # Now you use the *_new variables for the rest of your training script.
+    sp.save_npz(Y_TRAIN_PATH, Y_train)
+    sp.save_npz(Y_VAL_PATH, Y_val)
