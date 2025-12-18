@@ -624,9 +624,9 @@ class ModelCheckpointer:
             _, old_path = self.best_scores.pop()
             old_path.unlink(missing_ok=True)
 
-def compute_fmax(preds: torch.Tensor, labels: torch.Tensor) -> float:
+def compute_fmax(preds: torch.Tensor, labels: torch.Tensor, device: torch.device) -> float:
     """ Compute the F1-macro score for the predictions"""
-    thresholds = torch.arange(0.01, 1.0, 0.01, device=preds.device)
+    thresholds = torch.arange(0.01, 1.0, 0.01, device=device)
     best_f1 = 0.0
 
     for thr in thresholds:
