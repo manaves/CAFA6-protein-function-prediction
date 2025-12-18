@@ -11,12 +11,16 @@ class TrainConfig:
     INPUT_DIR = "../input/"
     INPUT_VAL_DIR = os.path.join(INPUT_DIR, "val/")
     INPUT_TRAIN_DIR = os.path.join(INPUT_DIR, "train/")
+    GENERAL_INPUT_DIR = "../../general_input/"
 
     # Input Data Paths
     TRAIN_EMB_PATH = os.path.join(INPUT_TRAIN_DIR, "train_fold0_embeddings.npy")
     VAL_EMB_PATH = os.path.join(INPUT_VAL_DIR, "val_fold0_embeddings.npy")
     Y_TRAIN_PATH = os.path.join(INPUT_TRAIN_DIR, "Y_train_fold0_sparse.npy")
     Y_VAL_PATH = os.path.join(INPUT_VAL_DIR, "Y_val_fold0_sparse.npy")
+    CLASS_PATH = os.path.join(INPUT_DIR, "classes_fold0.npy")
+    OBO_FILE = os.path.join(GENERAL_INPUT_DIR, "train/go-basic.obo")
+    IA_FILE = os.path.join(GENERAL_INPUT_DIR, "IA.tsv")
 
     # Log path
     LOG_DIR = os.path.join("./runs", "mlp_best_model_" + time.strftime("%Y%m%d_%H_%M"))
