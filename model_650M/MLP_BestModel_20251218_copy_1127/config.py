@@ -15,8 +15,8 @@ class TrainConfig:
     # Input Data Paths
     TRAIN_EMB_PATH = os.path.join(INPUT_TRAIN_DIR, "train_fold0_embeddings.npy")
     VAL_EMB_PATH = os.path.join(INPUT_VAL_DIR, "val_fold0_embeddings.npy")
-    Y_TRAIN_PATH = os.path.join(INPUT_TRAIN_DIR, "Y_train_fold0_sparse.npz")
-    Y_VAL_PATH = os.path.join(INPUT_VAL_DIR, "Y_val_fold0_sparse.npz")
+    Y_TRAIN_PATH = os.path.join(INPUT_TRAIN_DIR, "Y_train_fold0_sparse.npy")
+    Y_VAL_PATH = os.path.join(INPUT_VAL_DIR, "Y_val_fold0_sparse.npy")
 
     # Log path
     LOG_DIR = os.path.join("./runs", "mlp_best_model_" + time.strftime("%Y%m%d_%H_%M"))
@@ -41,6 +41,8 @@ class TrainConfig:
     # Environment
     DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     USE_AMP = True  # Automatic Mixed Precision (AMP)
+
+    EXP_NAME = "mlp_best_model"
 
 
 class InferenceConfig:

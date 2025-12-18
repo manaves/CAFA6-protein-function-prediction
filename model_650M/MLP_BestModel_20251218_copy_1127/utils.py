@@ -16,6 +16,9 @@ import networkx as nx
 import os
 import obonet
 
+import copy
+from pathlib import Path
+
 class ResidualBlock(nn.Module):
     """A compact residual block with Linear-LayerNorm-GELU-Dropout."""
 
@@ -95,7 +98,7 @@ def normalize_rows(x: np.ndarray) -> np.ndarray:
 
 def safe_load_sparse_array(path: str):
     """Loads a numpy array that may contain a sparse matrix object."""
-    obj = sp.load_npz(path)
+    obj = np.load(path, allow_pickle=True) # Changed from sp.load_npz to np.load
     # Handles case where a sparse object is saved in a 0-dim numpy array
     if isinstance(obj, np.ndarray) and obj.shape == ():
         return obj.item()
@@ -588,3 +591,53 @@ def write_submission_file(num_samples: int, test_ids: list, model_classes: np.nd
                 time.sleep(0.05)
 
     print(f"Submission saved at: {Config.SUBMISSION_FILE}")
+
+
+# --- NEW UTILITY FUNCTIONS ---
+class ModelEMA:
+    """ EMA logic ti improve model stability"""
+    def __init__(self, model:nn.Module, decay:float=0.999):
+        self.module = copy.deepcopy(model)
+        self.module.eval()
+        self.decay = decay
+    
+    @torch.no_grad()
+    def update(self, model: nn.Module):
+        for ema_p, model_p in zip(self.module.parameters(), model.parameters()):
+            ema_p.data.mul_(self.decay).add_(model_p.data, alpha=1 - self.decay)
+
+class ModelCheckpointer:
+    """ Checkpoint logic to save the model"""
+    def __init__(self, checkpoint_dir: Path, k: int=3):
+        self.checkpoint_dir = checkpoint_dir
+        self.k = k
+        self.best_scores: list[tuple[float, Path]] = []
+        checkpoint_dir.mkdir(parents=True, exist_ok=True)
+    
+    def checkpoint(self, model: nn.Module, score: float, epoch: int):
+        ckpt_path = self.checkpoint_dir / f"score_{score:.5f}_epoch_{epoch}.pth"
+        torch.save(model.state_dict(), ckpt_path)
+        self.best_scores.append(score, ckpt_path)
+        self.best_scores.sort(key=lambda x: -x[0]) # Sort descending
+
+        while len(self.best_scores) > self.k:
+            _, old_path = self.best_scores.pop()
+            old_path.unlink(missing_ok=True)
+
+def compute_fmax(preds: torch.Tensor, labels: torch.Tensor) -> float:
+    """ Compute the F1-macro score for the predictions"""
+    thresholds = torch.arange(0.01, 1.0, 0.01, device=preds.device)
+    best_f1 = 0.0
+
+    for thr in thresholds:
+        pred_binary = (preds >= thr).float()
+        tp = (pred_binary * labels).sum()
+        fp = (pred_binary * (1 - labels)).sum()
+        fn = ((1 - pred_binary) * labels).sum()
+        
+        precision = tp / (tp + fp + 1e-8)
+        recall = tp / (tp + fn + 1e-8)
+        f1 = 2 * precision * recall / (precision + recall + 1e-8)
+        best_f1 = max(best_f1, f1.item())
+
+    return best_f1
