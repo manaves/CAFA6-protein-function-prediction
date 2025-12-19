@@ -1,6 +1,7 @@
 import os
 import time
 import numpy as np
+import pandas as pd
 import torch
 import torch.nn as nn
 import torch.optim as optim
@@ -84,7 +85,7 @@ def save_checkpoint(model, optimizer, epoch, threshold, val_f1):
 def save_propagated_predictions(model, loader: DataLoader, total_samples: int, label_count: int, propagation_steps: list[tuple[int, int]]):
     """
     Loads best model, applies GO propagation to the predictions, and saves 
-    the resulting scores to a memory-mapped file.
+    the resulting scores to a memory-mapped file and a TSV file with protein IDs.
     """
     
     # Load best model checkpoint
@@ -98,6 +99,31 @@ def save_propagated_predictions(model, loader: DataLoader, total_samples: int, l
         logging.error("Model checkpoint not found. Cannot save predictions.")
         return
 
+    # Load protein IDs from validation split CSV
+    val_split_path = os.path.join(Config.INPUT_VAL_DIR, "val_fold0_split.csv")
+    logging.info(f"Loading validation protein IDs from: {val_split_path}")
+    try:
+        val_df = pd.read_csv(val_split_path)
+        protein_ids = val_df['id'].values.tolist()
+        if len(protein_ids) != total_samples:
+            logging.warning(
+                f"Number of protein IDs ({len(protein_ids)}) doesn't match "
+                f"number of samples ({total_samples}). Using min of both."
+            )
+            min_len = min(len(protein_ids), total_samples)
+            protein_ids = protein_ids[:min_len]
+            total_samples = min_len
+        logging.info(f"Loaded {len(protein_ids)} protein IDs")
+    except FileNotFoundError:
+        logging.warning(f"Validation split CSV not found at {val_split_path}. Cannot save TSV with protein IDs.")
+        protein_ids = None
+    except Exception as e:
+        logging.warning(f"Error loading protein IDs: {e}. Continuing without protein IDs in TSV.")
+        protein_ids = None
+
+    # Load model classes (GO terms)
+    model_classes = np.load(Config.CLASSES_PATH)
+
     # Create memory-mapped file
     logging.info(f"Creating memmap for propagated predictions at: {Config.PREDICTIONS_MEMMAP_PATH} with shape ({total_samples}, {label_count})")
     fp = np.memmap(
@@ -106,6 +132,9 @@ def save_propagated_predictions(model, loader: DataLoader, total_samples: int, l
         mode='w+', 
         shape=(total_samples, label_count)
     )
+
+    # Prepare list for TSV output
+    tsv_predictions = []
 
     model.eval()
     start_idx = 0
@@ -130,14 +159,56 @@ def save_propagated_predictions(model, loader: DataLoader, total_samples: int, l
                     scores[:, child_idx]
                 )
             
-            # 4. Save the propagated scores
+            # 4. Save the propagated scores to memmap
             batch_size = scores.shape[0]
             fp[start_idx : start_idx + batch_size, :] = scores
+            
+            # 5. Collect predictions for TSV file (with protein IDs)
+            if protein_ids is not None:
+                for i in range(batch_size):
+                    protein_id = protein_ids[start_idx + i]
+                    # Save all predictions above a minimum threshold
+                    min_threshold = 0.01
+                    above_threshold = scores[i] >= min_threshold
+                    predicted_indices = np.where(above_threshold)[0]
+                    
+                    for pred_idx in predicted_indices:
+                        go_term = model_classes[pred_idx]
+                        prediction_score = float(scores[i, pred_idx])
+                        tsv_predictions.append({
+                            'protein_id': protein_id,
+                            'go_term': go_term,
+                            'prediction': prediction_score
+                        })
+            
             start_idx += batch_size
 
     fp.flush() # Ensure data is written to disk
     logging.info(f"Propagated scores saved in: {Config.PREDICTIONS_MEMMAP_PATH}")
     logging.info(f"Best F1 (val): {best_val_f1:.5f} with threshold {best_threshold}")
+    
+    # Save TSV file with protein IDs
+    if protein_ids is not None and len(tsv_predictions) > 0:
+        tsv_output_path = os.path.join(Config.OUTPUT_DIR, "val_predictions_with_ids.tsv")
+        logging.info(f"Saving predictions with protein IDs to: {tsv_output_path}")
+        
+        df_predictions = pd.DataFrame(tsv_predictions)
+        # Sort by protein_id and then by prediction score (descending)
+        df_predictions = df_predictions.sort_values(
+            by=['protein_id', 'prediction'],
+            ascending=[True, False]
+        )
+        
+        df_predictions.to_csv(
+            tsv_output_path,
+            sep='\t',
+            index=False,
+            header=True
+        )
+        
+        logging.info(f"Saved {len(df_predictions)} predictions for {len(protein_ids)} proteins to TSV")
+    elif protein_ids is None:
+        logging.info("Skipping TSV file creation (protein IDs not available)")
 
 # --- LOGGING SETUP ---
 class TqdmLoggingHandler(logging.Handler):

@@ -38,8 +38,8 @@ class Config:
 
     # Output Paths
     # IMPORTANT: Change PREDICTIONS_MEMMAP_PATH to clearly indicate PROPAGATED predictions
-    PREDICTIONS_MEMMAP_PATH = os.path.join(OUTPUT_DIR, "val_predictions_propagated_fold0.npy")
-    MODEL_SAVE_PATH = os.path.join(OUTPUT_DIR, "best_mlp_model_fold0.pth")
+    PREDICTIONS_MEMMAP_PATH = os.path.join(OUTPUT_DIR, "val_predictions_propagated_fold0_2.npy")
+    MODEL_SAVE_PATH = os.path.join(OUTPUT_DIR, "best_mlp_model_fold0_2.pth")
 
     # Training Hyperparameters
     SEED = 42
