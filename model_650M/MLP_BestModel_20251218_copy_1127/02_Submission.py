@@ -6,18 +6,12 @@ import networkx as nx
 import os
 import time
 from tqdm import tqdm
-
-from config import InferenceConfig as Config
-from utils import load_data_and_model, run_inference, hierarchical_propagation, write_submission_file
-
-# --- 1. CONFIGURATION PARAMETERS ---
-
-print(f"Using device: {Config.DEVICE}")
-
-# --- MAIN EXECUTION ---
+from config import Config
+from utils import load_data_and_model, run_inference, hierarchical_propagation, write_submission_file, ResidualMLP
 
 if __name__ == "__main__":
-    
+    print(f"Using device: {Config.DEVICE}")
+    LABEL_COUNT = np.load(Config.CLASSES_PATH).shape[0]
     # Load Data and Model
     model, emb_test, test_ids, model_classes, NUM_SAMPLES, NUM_CLASSES, THRESHOLD = load_data_and_model()
     
