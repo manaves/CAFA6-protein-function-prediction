@@ -2,15 +2,18 @@ import os
 import time
 import torch
 
+# Absolute path to the directory containing this config file
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+
 # --- CONFIGURATION PARAMETERS ---
 class Config:
     """A class to hold all configuration parameters."""
-    # File Paths
-    OUTPUT_DIR = "./output/"
-    INPUT_DIR = "../input/"
-    INPUT_VAL_DIR = os.path.join(INPUT_DIR, "val/")
-    INPUT_TRAIN_DIR = os.path.join(INPUT_DIR, "train/")
-    GENERAL_INPUT_DIR = "../../general_input/"
+    BASE_DIR = BASE_DIR
+    OUTPUT_DIR = os.path.join(BASE_DIR, "output")
+    INPUT_DIR = os.path.normpath(os.path.join(BASE_DIR, os.pardir, "input"))
+    INPUT_VAL_DIR = os.path.join(INPUT_DIR, "val")
+    INPUT_TRAIN_DIR = os.path.join(INPUT_DIR, "train")
+    GENERAL_INPUT_DIR = os.path.normpath(os.path.join(BASE_DIR, os.pardir, os.pardir, "general_input"))
 
     # Input Data Paths
     TRAIN_EMB_PATH = os.path.join(INPUT_TRAIN_DIR, "train_fold0_embeddings.npy")
@@ -32,7 +35,8 @@ class Config:
     SUBMISSION_FILE = os.path.join(OUTPUT_DIR, "submission.tsv")
     
     # Log paths
-    LOG_DIR = os.path.join("./runs", "mlp_best_model_fold0_" + time.strftime("%Y%m%d_%H_%M"))
+    RUNS_DIR = os.path.join(BASE_DIR, "runs")
+    LOG_DIR = os.path.join(RUNS_DIR, "mlp_best_model_fold0_" + time.strftime("%Y%m%d_%H_%M"))
     LOG_FILE = "train_log.txt"
     LOG_FILE_PATH = os.path.join(OUTPUT_DIR, "LR_sweep_log.txt")
 
@@ -53,7 +57,7 @@ class Config:
     LABEL_SMOOTHING_EPSILON = 0.0
     BATCH_SIZE_SUBMISSION = 1024
 
-    THRESHOLD = 0.1
+    THRESHOLD = 0.5
     
     # --- SWEEP-SPECIFIC PARAMETERS ---
     SWEEP_EPOCHS = 5     # Number of epochs to run for the quick sweep
@@ -62,3 +66,8 @@ class Config:
     # Environment
     DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     USE_AMP = True
+
+# Ensure the directories the scripts write to exist, so they can run from any
+# working directory without any manual setup.
+os.makedirs(Config.OUTPUT_DIR, exist_ok=True)
+os.makedirs(Config.RUNS_DIR, exist_ok=True)

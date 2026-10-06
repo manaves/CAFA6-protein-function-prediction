@@ -13,7 +13,7 @@ from config import Config
 from utils import (
     set_seed, apply_label_smoothing,
     calculate_pos_weight, load_and_preprocess_data, load_go_dag, map_model_classes,
-    get_propagation_steps, SparseLabelDataset, ResidualMLP, validate_cafa_pk
+    get_propagation_steps, SparseLabelDataset, ResidualMLP, validate_cafa_pk_gpu
 )
     
 # Global paths (will be updated for each sweep run)
@@ -72,11 +72,14 @@ def train_one_epoch(model: nn.Module, loader: DataLoader, criterion, optimizer, 
     epoch_loss = running_loss / len(loader.dataset)
     return epoch_loss
 
+
 def save_checkpoint(*args, **kwargs):
     """Placeholder: Disabled for the fast sweep."""
     pass 
 
+
 # --- CORE TRAINING FUNCTION FOR SWEEP ---
+
 def run_training_experiment(lr: float, epoch_max: int, 
                             initial_model_state: dict, 
                             train_loader: DataLoader, val_loader: DataLoader, 
@@ -91,7 +94,7 @@ def run_training_experiment(lr: float, epoch_max: int,
     
     # 1. Setup paths and loggers for this specific LR run
     lr_str = f"{lr:.0e}".replace('-', 'n').replace('+', 'p') # e.g., 5e-05 -> 5en05
-    log_dir = os.path.join("./runs", f"sweep_lr_{lr_str}_" + datetime.now().strftime("%H%M%S"))
+    log_dir = os.path.join(Config.RUNS_DIR, f"sweep_lr_{lr_str}_" + datetime.now().strftime("%H%M%S"))
     
     # Initialize TensorBoard writer
     writer = SummaryWriter(log_dir=log_dir)
@@ -137,11 +140,10 @@ def run_training_experiment(lr: float, epoch_max: int,
             
         # Validate (Using CAFA-PK validation function)
         # We use step=0.05 for speed during training
-        best_t_local, best_f1_local = validate_cafa_pk(
+        best_t_local, best_f1_local = validate_cafa_pk_gpu(
             model, val_loader, ia_weights_np=ia_weights_np, 
             propagation_steps=propagation_steps, 
-            label_count=LABEL_COUNT, device=Config.DEVICE,
-            th_step=0.05  # <--- Optimization of speed
+            label_count=LABEL_COUNT, device=Config.DEVICE
         )
 
         print(
@@ -172,7 +174,7 @@ if __name__ == "__main__":
     set_seed()
     
     # 1. Data Loading (Done only once)
-    X_train, X_val, Y_train_sparse, Y_val_sparse, INPUT_DIM, LABEL_COUNT, ALL_GO_TERMS_LIST = load_and_preprocess_data()
+    X_train, X_val, Y_train_sparse, Y_val_sparse, INPUT_DIM, LABEL_COUNT = load_and_preprocess_data()
     N_train = len(X_train)
 
     # Calculate Pos Weight (Done only once)

@@ -1,13 +1,6 @@
-import torch
-import torch.nn as nn
 import numpy as np
-import obonet
-import networkx as nx
-import os
-import time
-from tqdm import tqdm
 from config import Config
-from utils import load_data_and_model, run_inference, hierarchical_propagation, write_submission_file, ResidualMLP
+from utils import load_data_and_model, run_inference, hierarchical_propagation, write_submission_file
 
 if __name__ == "__main__":
     print(f"Using device: {Config.DEVICE}")
